@@ -1,0 +1,177 @@
+<html>
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>Esri Leaflet Tutorials: Change the basemap style</title>
+
+    <!-- Load Leaflet from CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Load Esri Leaflet from CDN -->
+    <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
+    <script src="https://unpkg.com/esri-leaflet-vector@4.1.0/dist/esri-leaflet-vector.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: 0;
+        left: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #323232;
+      }
+      .leaflet-control-layers-base{
+        display: flex;
+        flex-direction: row;
+        max-width: 450px;
+        flex-wrap: wrap;
+        justify-content: space-around;
+      }
+      .leaflet-control-layers label{
+        text-align: center;
+        margin-bottom: 1rem;
+        overflow: hidden;
+        white-space: nowrap;
+        max-width: 200px;
+        text-overflow: ellipsis;
+      }
+      #divLanguageSelector{
+        position: absolute;
+        top: 10px;
+        left: 70px;
+        z-index: 999;
+        background-color: rgba(255, 255, 255, 0.75);
+        padding: .75rem 1rem;
+        border-radius: 1px;
+        box-shadow: 0px 0px 4px gray;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="map"></div>
+    <div id="divLanguageSelector">
+      Language:
+      <select id="languageSelector"></select>
+    </div>
+
+    <script>
+      const loc = {
+        coords: [52.512106, 13.392529], 
+        popupText: 'Hilton'
+      };
+
+      const map = L.map("map", {
+        minZoom: 2
+      }).setView(loc.coords, 5);
+
+      // Add marker
+      L.marker(loc.coords).addTo(map)
+        .bindPopup(loc.popupText)
+        .openPopup();
+
+      const apiKey = "AAPK98882d449ec74b5a9256d2030c92e930jR8X2TZmHvUaiTDFkVigEZ3njuahYetsg0I1gZ1u2GIK_Z3XXJ8scWKLbHJCvFJM"
+      const basemapsSelfDescribingEndpoint = "https://basemapstyles-api.arcgis.com/arcgis/rest/services/styles/v2/styles/self"
+
+      let basemapLayers = {},
+          layersControl,
+          selectedLayer,
+          basemapsServiceDescription;
+
+      // Generate layer based on style and language
+      const getBasemap = (style, languageCode) => {
+        return L.esri.Vector.vectorBasemapLayer(style, {
+          apikey: apiKey,
+          version: 2,
+          language: languageCode
+        })
+      };
+
+      // Generate config for Leaflet Control.Layers
+      const generateLayers = (style, selectedLanguageCode) => {
+        const basemapLayers = {};
+        basemapsServiceDescription.styles.forEach((el, i) => {
+
+          let baseLayer = basemapLayers[`${el.path}<br><img src="${el.thumbnailUrl}" title="${el.path}" width="200" height="133">`] = getBasemap(el.path, selectedLanguageCode);
+
+          // Add default map style to the map
+          if(style === el.path){
+            baseLayer.addTo(map);
+          }
+        });
+        
+        return basemapLayers;
+      }
+
+      // Use basemaps self-describing endpoint to init the UI
+      async function initApp(style = 'arcgis/imagery', lang = 'global') {
+        const response = await fetch(basemapsSelfDescribingEndpoint);
+        basemapsServiceDescription = await response.json();
+        
+        selectedLayer = style;
+
+        // Load language selector dynamically load all languages available
+        basemapsServiceDescription.languages.forEach(el => {
+          const opt = document.createElement("option");
+          opt.value = el.code;
+          opt.innerText = el.name;
+          if(lang === el.code)
+            opt.selected = "selected";
+          languageSelectorEl.appendChild(opt);
+        });
+
+        // Load Layer Control (basemap gallery)
+        basemapLayers = generateLayers(style, lang);
+        layersControl = L.control.layers(basemapLayers, null, { collapsed: false }).addTo(map);
+      }
+      
+      // Find and SET the enum of the last selected layer
+      map.on('baselayerchange', function (e) {
+          for (const property in basemapLayers) {
+            if(property === e.name){
+              selectedLayer = property.split("<br>")[0];
+            }
+          }
+      });
+
+      // Change basemaps in layersControl and update current base layer
+      const languageSelectorEl = document.querySelector('#languageSelector')
+      languageSelectorEl.addEventListener('change', e => {
+        selectedLanguageCode = e.target.value;
+        
+        // Remove all layers in control
+        for (const property in basemapLayers) {
+          layersControl.removeLayer(basemapLayers[property])
+        }
+        // Remove layers in the map
+        map.eachLayer(function (layer) {
+            map.removeLayer(layer);
+        });
+        
+        // Load new basemap layers (which will remember de last one)
+        basemapLayers = generateLayers(selectedLayer, selectedLanguageCode)
+        for (const property in basemapLayers) {
+          layersControl.addBaseLayer(basemapLayers[property], property)
+        }
+
+        // Add marker
+        L.marker(loc.coords).addTo(map)
+          .bindPopup(loc.popupText)
+          .openPopup();
+        
+      });
+
+      // Load the map and set by default language
+      initApp('arcgis/navigation', 'de');
+    </script>
+
+  </body>
+</html>
